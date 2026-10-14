@@ -14758,6 +14758,9 @@
           "path": "scripts/seo-indexnow-submit.mjs"
         },
         {
+          "path": "scripts/syndication-candidates.mjs"
+        },
+        {
           "path": "scripts/verify-agent-readiness.mjs"
         },
         {
