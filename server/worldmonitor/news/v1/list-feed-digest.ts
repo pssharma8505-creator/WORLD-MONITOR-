@@ -100,12 +100,16 @@ import {
 import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
 import {
   STORY_LABEL_FIELD,
+  countLabels,
   encodeStoryLabel,
   keepUnrecordedLabels,
   labelChangeFor,
+  labelCountsCommand,
   recordLabelChanges,
   storyLabel,
   type LabelChange,
+  type LabelCounts,
+  type StoryLabel,
 } from '../../../_shared/label-history';
 import {
   STORY_TRACK_KEY,
@@ -2594,12 +2598,15 @@ function storyLabelChanges(
   tracks: ReadonlyMap<string, StoryTrack>,
   now: number,
   unread: ReadonlySet<string> = new Set(),
-): { labelByHash: Map<string, string>; labelChanges: LabelChange[] } {
+): { labelByHash: Map<string, string>; labelChanges: LabelChange[]; labelCounts: LabelCounts } {
   const clusterByHash = groupByTitleHash(servable);
   const labelByHash = new Map<string, string>();
   const labelChanges: LabelChange[] = [];
+  const states: StoryLabel['state'][] = [];
   for (const [hash, members] of groupByTitleHash(served)) {
     const label = storyLabel(clusterByHash.get(hash) ?? members);
+    // Counts describe today's labels, whether or not the track row was read.
+    states.push(label.state);
     // An unread track row is unknown, not new: leave its label untouched so
     // the next cycle compares against the real previous label.
     if (unread.has(hash)) continue;
@@ -2613,7 +2620,7 @@ function storyLabelChanges(
     });
     if (change) labelChanges.push(change);
   }
-  return { labelByHash, labelChanges };
+  return { labelByHash, labelChanges, labelCounts: countLabels(states, now) };
 }
 
 async function writeStoryTracking(
@@ -3394,9 +3401,9 @@ async function buildDigest(
     // #9093 label history. Only full/en records it: the story:track row is
     // shared by every variant, and a variant that keeps fewer of a story's
     // feeds would flip the label back and forth.
-    const { labelByHash, labelChanges } = variant === 'full' && lang === 'en'
+    const { labelByHash, labelChanges, labelCounts } = variant === 'full' && lang === 'en'
       ? storyLabelChanges(allSliced, servableItems, storyTracks, now, unreadTracks)
-      : { labelByHash: undefined, labelChanges: [] };
+      : { labelByHash: undefined, labelChanges: [], labelCounts: undefined };
 
     // Record changes before persisting the new labels: a story whose entry
     // was not written keeps its previous label, so the change is detected
@@ -3425,6 +3432,16 @@ async function buildDigest(
     ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
+    // #9093: today's stories by label, for /trust. One command per full/en build.
+    // An empty build is rejected for the last-good digest, so it must not
+    // overwrite the counts that describe that digest.
+    if (labelCounts && labelCounts.stories > 0) {
+      const timeoutMs = redisTimeoutForDeadline(storyTrackingDeadlineAt);
+      if (timeoutMs !== undefined) {
+        await runRedisPipeline([labelCountsCommand(labelCounts)], false, timeoutMs)
+          .catch((err: unknown) => console.warn('[digest] label counts write failed:', err));
+      }
+    }
 
     for (const [category, sliced] of slicedByCategory) {
       categories[category] = {
