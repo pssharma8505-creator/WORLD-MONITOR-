@@ -122,6 +122,58 @@ export interface CountryHeadline {
   publishedAt: number;
 }
 
+export interface ListLabelChangesRequest {
+  storyId: string;
+  limit: number;
+}
+
+export interface ListLabelChangesResponse {
+  changes: LabelChange[];
+  state: string;
+  retentionDays: number;
+}
+
+export interface LabelChange {
+  storyId: string;
+  field: string;
+  previous: string;
+  next: string;
+  previousPublishers: number;
+  nextPublishers: number;
+  at: number;
+  trigger: string;
+  reason: string;
+  sources: LabelChangePublisher[];
+  title: string;
+  link: string;
+  credibilityScore: number;
+}
+
+export interface LabelChangePublisher {
+  name: string;
+  tier: number;
+}
+
+export interface SearchFactChecksRequest {
+  claim: string;
+}
+
+export interface SearchFactChecksResponse {
+  factChecks: FactCheck[];
+  state: string;
+  caveat: string;
+}
+
+export interface FactCheck {
+  publisher: string;
+  site: string;
+  rating: string;
+  reviewedAt: string;
+  url: string;
+  title: string;
+  claimReviewed: string;
+}
+
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
@@ -274,6 +326,57 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as ListCountryHeadlinesResponse;
+  }
+
+  async listLabelChanges(req: ListLabelChangesRequest, options?: NewsServiceCallOptions): Promise<ListLabelChangesResponse> {
+    let path = "/api/news/v1/list-label-changes";
+    const params = new URLSearchParams();
+    if (req.storyId != null && req.storyId !== "") params.set("story_id", String(req.storyId));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListLabelChangesResponse;
+  }
+
+  async searchFactChecks(req: SearchFactChecksRequest, options?: NewsServiceCallOptions): Promise<SearchFactChecksResponse> {
+    let path = "/api/news/v1/search-fact-checks";
+    const params = new URLSearchParams();
+    if (req.claim != null && req.claim !== "") params.set("claim", String(req.claim));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchFactChecksResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
